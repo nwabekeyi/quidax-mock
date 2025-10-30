@@ -7,8 +7,8 @@ const crypto = require('crypto');
  */
 async function createUser(req, res) {
   try {
-    const { email, firstName, lastName } = req.body;
-    if (!email || !firstName || !lastName) {
+    const { email, first_name, last_name } = req.body;
+    if (!email || !first_name || !last_name) {
       return res.status(422).json({
         status: "error",
         message: "Validation failed",
@@ -19,7 +19,7 @@ async function createUser(req, res) {
     const quidaxId = Math.floor(Math.random() * 1e9).toString();
     const reference = `QDX-SUB-${Math.floor(Math.random() * 100000)}`;
 
-    const user = new User({ email, firstName, lastName, quidaxId, reference });
+    const user = new User({ email, first_name, last_name, quidaxId, reference });
     await user.save();
 
     return res.status(201).json({
@@ -28,7 +28,7 @@ async function createUser(req, res) {
       data: {
         id: quidaxId,
         reference,
-        user: { id: Math.floor(Math.random() * 1e6), email, first_name: firstName, last_name: lastName },
+        user: { id: Math.floor(Math.random() * 1e6), email, first_name, last_name },
         created_at: new Date().toISOString()
       }
     });
