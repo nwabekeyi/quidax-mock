@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const walletService = require('../services/wallet');
+const walletService = require('../services/paymentAddress');
 
 // Mock create wallet address
 router.post('/:userId/wallets/:currency/addresses', async (req, res) => {
