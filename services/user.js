@@ -1,4 +1,3 @@
-// services/user.js
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const Wallet = require('../models/wallet');
@@ -29,8 +28,10 @@ async function createUser(req, res) {
       });
     }
 
-    const quidaxId = Math.floor(Math.random() * 1e9).toString();
-    const reference = `QDX-SUB-${Math.floor(Math.random() * 100000)}`;
+    // Generate both IDs (Quidax-style)
+    const quidaxAccountId = Math.floor(Math.random() * 1e9).toString();
+    const quidaxSnId = `QDX-SUB-${Math.floor(Math.random() * 100000)}`;
+    const reference = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
 
     // ─────────────────────────────────────────────
     // Step 1: Create User inside transaction
@@ -39,7 +40,8 @@ async function createUser(req, res) {
       email,
       first_name,
       last_name,
-      quidaxId,
+      quidaxAccountId,
+      quidaxSnId,
       reference,
     });
     await user.save({ session });
@@ -107,7 +109,8 @@ async function createUser(req, res) {
       status: 'success',
       message: 'Subaccount created successfully',
       data: {
-        id: quidaxId,
+        id: quidaxAccountId,
+        sn: quidaxSnId,
         reference,
         wallets: responseWallets,
         user: {
@@ -132,13 +135,13 @@ async function createUser(req, res) {
 }
 
 /**
- * Fetch user by quidaxId or 'me'
+ * Fetch user by quidaxAccountId or 'me'
  */
 async function getUser(userId) {
   if (userId === 'me') {
     return User.findOne().exec();
   }
-  return User.findOne({ quidaxId: userId }).exec();
+  return User.findOne({ quidaxAccountId: userId }).exec();
 }
 
 module.exports = { createUser, getUser };
