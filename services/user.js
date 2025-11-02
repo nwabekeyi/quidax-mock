@@ -1,14 +1,17 @@
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const Wallet = require('../models/wallet');
+const PaymentAddressService = require('./paymentAddress');
 const { v4: uuidv4 } = require('uuid');
 
 /** Supported currencies — Quidax-like */
-const SUPPORTED_CURRENCIES = ['NGN', 'BTC', 'ETH', 'USDT', 'BNB', 'TRX'];
+const SUPPORTED_CURRENCIES = [
+  'qdx', 'ghs', 'btc', 'usdt', 'busd', 'cfx', 'usdc', 'cnhc', 'eth', 'bnb',
+  'xrp', 'ltc', 'wkd', 'bch', 'doge', 'dash', 'trx', 'one', 'link', 'cake',
+  'xlm', 'axs', 'shib', 'afen', 'bls', 'fil', 'ada', 'dot', 'xtz', 'matic',
+  'sfm', 'aave', 'wsg', 'ckt', 'floki', 'sol', 'ape', 'ngn'
+];
 
-/**
- * Create a subaccount (mock) — wrapped in a transaction
- */
 async function createUser(req, res) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -28,14 +31,11 @@ async function createUser(req, res) {
       });
     }
 
-    // Generate both IDs (Quidax-style)
     const quidaxAccountId = Math.floor(Math.random() * 1e9).toString();
     const quidaxSnId = `QDX-SUB-${Math.floor(Math.random() * 100000)}`;
     const reference = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
 
-    // ─────────────────────────────────────────────
-    // Step 1: Create User inside transaction
-    // ─────────────────────────────────────────────
+    // ──────────────── Step 1: Create User ────────────────
     const user = new User({
       email,
       first_name,
@@ -46,10 +46,9 @@ async function createUser(req, res) {
     });
     await user.save({ session });
 
-    // ─────────────────────────────────────────────
-    // Step 2: Create Wallets for all supported currencies
-    // ─────────────────────────────────────────────
-    const walletDocs = SUPPORTED_CURRENCIES.map(currency => {
+    // ──────────────── Step 2: Create Wallets ────────────────
+    const walletDocs = SUPPORTED_CURRENCIES.map((rawCurrency) => {
+      const currency = rawCurrency.toUpperCase();
       const isFiat = currency === 'NGN';
       return {
         quidaxWalletId: `qax_${Date.now()}_${currency}_${uuidv4().slice(0, 8)}`,
@@ -58,7 +57,7 @@ async function createUser(req, res) {
         balance: 0,
         locked: 0,
         staked: 0,
-        reference_currency: 'usd',
+        reference_currency: 'USD',
         is_crypto: !isFiat,
         blockchain_enabled: !isFiat,
         default_network: isFiat ? 'bank_transfer' : 'mainnet',
@@ -72,24 +71,40 @@ async function createUser(req, res) {
                 withdraws_enabled: true,
               },
             ],
-        deposit_address: isFiat ? '' : `${currency.toLowerCase()}_addr_${uuidv4().slice(0, 10)}`,
+        deposit_address: '', // address generated separately
         destination_tag: '',
         user: user._id,
       };
     });
 
-    await Wallet.insertMany(walletDocs, { session });
+    const createdWallets = await Wallet.insertMany(walletDocs, { session });
 
-    // ─────────────────────────────────────────────
-    // Step 3: Commit transaction
-    // ─────────────────────────────────────────────
     await session.commitTransaction();
     session.endSession();
 
-    // ─────────────────────────────────────────────
-    // Step 4: Build response
-    // ─────────────────────────────────────────────
-    const responseWallets = walletDocs.map(w => ({
+    // ──────────────── Step 3: Generate Payment Addresses ────────────────
+    for (const w of createdWallets) {
+      if (w.is_crypto) {
+        const payload = {
+          event: 'wallet.address.generated',
+          data: {
+            id: w.quidaxWalletId,
+            currency: w.currency,
+            address: `${w.currency.toLowerCase()}_addr_${uuidv4().slice(0, 10)}`,
+            network: w.default_network,
+            user: { id: user.quidaxAccountId },
+            destination_tag: '',
+            created_at: new Date().toISOString(),
+          },
+        };
+
+        // Generate payment address using existing logic
+        await PaymentAddressService.handleWalletAddressGenerated(payload);
+      }
+    }
+
+    // ──────────────── Step 4: Build Response ────────────────
+    const responseWallets = createdWallets.map((w) => ({
       id: w.quidaxWalletId,
       name: w.name,
       currency: w.currency,
@@ -133,6 +148,8 @@ async function createUser(req, res) {
     });
   }
 }
+
+
 
 /**
  * Fetch user by quidaxAccountId or 'me'

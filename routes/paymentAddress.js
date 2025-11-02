@@ -1,10 +1,9 @@
+// routes/webhook.js
 const express = require('express');
 const router = express.Router();
-const walletService = require('../services/paymentAddress');
+const { createWebhookHandler } = require('../handler/webhookHandler');
+const paymentAddressService = require('../services/paymentAddress');
 
-// Mock create wallet address
-router.post('/:userId/wallets/:currency/addresses', async (req, res) => {
-  await walletService.createPaymentAddress(req, res);
-});
+router.post('/qudax-webhook', createWebhookHandler(paymentAddressService.handleWalletAddressGenerated));
 
 module.exports = router;
