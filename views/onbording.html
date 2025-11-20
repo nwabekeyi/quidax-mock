@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Backbone Onboarding - Full Flow Test</title>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --success: #10b981;
+      --danger: #ef4444;
+      --gray: #6b7280;
+      --light: #f3f4f6;
+      --dark: #1f2937;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 500px;
+    }
+    h1 { text-align: center; color: var(--dark); margin-bottom: 30px; font-size: 28px; }
+    .step { display: none; }
+    .step.active { display: block; animation: fadeIn 0.5s; }
+    label { display: block; margin: 18px 0 8px; font-weight: 600; color: var(--dark); font-size: 15px; }
+    input, select {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 16px;
+      transition: all 0.3s;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      margin-top: 25px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover { background: #4f46e5; transform: translateY(-1px); }
+    button:disabled { background: var(--gray); cursor: not-allowed; transform: none; }
+    .message {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: 500;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .loader {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .progress {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 35px;
+    }
+    .progress-step {
+      width: 44px;
+      height: 44px;
+      background: #e5e7eb;
+      color: var(--gray);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 18px;
+      transition: all 0.3s;
+    }
+    .progress-step.active {
+      background: var(--primary);
+      color: white;
+      transform: scale(1.1);
+    }
+    .progress-step.done {
+      background: var(--success);
+      color: white;
+    }
+    .small { font-size: 13px; color: #666; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Backbone Onboarding</h1>
+
+    <div class="progress">
+      <div class="progress-step active" id="step1">1</div>
+      <div class="progress-step" id="step2">2</div>
+      <div class="progress-step" id="step3">3</div>
+      <div class="progress-step" id="step4">4</div>
+    </div>
+
+    <!-- Step 1: Email -->
+    <div class="step active" id="form-email">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" placeholder="you@example.com" required />
+      <button onclick="sendOtp()">Send Verification Code</button>
+      <div id="msg1"></div>
+    </div>
+
+    <!-- Step 2: OTP -->
+    <div class="step" id="form-otp">
+      <label for="otp">Enter 6-digit Code from Email</label>
+      <input type="text" id="otp" maxlength="6" placeholder="123456" required />
+      <button onclick="verifyOtp()">Verify Code</button>
+      <div id="msg2"></div>
+    </div>
+
+    <!-- Step 3: Complete Profile -->
+    <div class="step" id="form-details">
+      <label>First Name</label>
+      <input type="text" id="firstName" placeholder="John" required />
+      
+      <label>Last Name</label>
+      <input type="text" id="lastName" placeholder="Doe" required />
+      
+      <label>Phone Number</label>
+      <input type="text" id="phoneNumber" placeholder="08012345678 or +2348012345678" required />
+      <div class="small">Must be 11 digits (e.g. 08012345678) or +234...</div>
+      
+      <label>Country</label>
+      <select id="country" required>
+        <option value="">Select Country</option>
+        <option value="NG">Nigeria</option>
+        <option value="GH">Ghana</option>
+        <option value="KE">Kenya</option>
+        <option value="ZA">South Africa</option>
+      </select>
+      
+      <label>Gender</label>
+      <select id="gender" required>
+        <option value="MALE">Male</option>
+        <option value="FEMALE">Female</option>
+      </select>
+      
+      <label>Date of Birth</label>
+      <input type="text" id="dob" placeholder="15-05-1995" required />
+      <div class="small">Format: DD-MM-YYYY (e.g. 15-05-1995)</div>
+      
+      <label>Residential Address</label>
+      <input type="text" id="address" placeholder="123 Lekki Phase 1, Lagos" required />
+      
+      <button onclick="completeSignup()">Continue →</button>
+      <div id="msg3"></div>
+    </div>
+
+    <!-- Step 4: Set PIN -->
+    <div class="step" id="form-pin">
+      <label for="pin">Create 6-digit PIN</label>
+      <input type="password" id="pin" maxlength="6" placeholder="••••••" required />
+      
+      <label>Confirm PIN</label>
+      <input type="password" id="confirmPin" maxlength="6" placeholder="••••••" required />
+      
+      <button onclick="setPin()">Create Account</button>
+      <div id="msg4"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:5000/api/v1/auth'; // Change if your backend runs on different port
+    let tempToken = '';
+    let userEmail = '';
+
+    function $(id) { return document.getElementById(id); }
+
+    function showMessage(el, text, type = 'info') {
+      el.innerHTML = `<div class="message ${type}">${text}</div>`;
+    }
+
+    function setStep(activeId, doneSteps = []) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      $(activeId).classList.add('active');
+      document.querySelectorAll('.progress-step').forEach(s => {
+        s.classList.remove('active', 'done');
+        if (doneSteps.includes(s.id)) s.classList.add('done');
+        if (s.id === activeId.replace('form-', 'step')) s.classList.add('active');
+      });
+    }
+
+    async function sendOtp() {
+      userEmail = $('email').value.trim();
+      if (!userEmail || !userEmail.includes('@')) return showMessage($('msg1'), 'Please enter a valid email', 'error');
+
+      const btn = event.target;
+      btn.innerHTML = '<span class="loader"></span>Sending...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_URL}/sign-up-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: userEmail })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          showMessage($('msg1'), 'Verification code sent to your email!', 'success');
+          setStep('form-otp', ['step1']);
+        } else {
+          showMessage($('msg1'), data.message || 'Failed to send OTP', 'error');
+        }
+      } catch (err) {
+        showMessage($('msg1'), 'Network error. Is backend running on port 5000?', 'error');
+      }
+      btn.innerHTML = 'Send Verification Code';
+      btn.disabled = false;
+    }
+
+    async function verifyOtp() {
+      const otp = $('otp').value.trim();
+      if (otp.length !== 6 || !/^\d+$/.test(otp)) return showMessage($('msg2'), 'Enter valid 6-digit code', 'error');
+
+      const btn = event.target;
+      btn.innerHTML = '<span class="loader"></span>Verifying...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_URL}/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: userEmail, otp })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.data?.accessToken) {
+          tempToken = data.data.accessToken;
+          showMessage($('msg2'), 'Verified! Complete your profile', 'success');
+          setStep('form-details', ['step1', 'step2']);
+        } else {
+          showMessage($('msg2'), data.message || 'Invalid or expired OTP', 'error');
+        }
+      } catch (err) {
+        showMessage($('msg2'), 'Connection failed', 'error');
+      }
+      btn.innerHTML = 'Verify Code';
+      btn.disabled = false;
+    }
+
+    async function completeSignup() {
+      const dobRaw = $('dob').value.trim();
+      const phoneRaw = $('phoneNumber').value.trim();
+
+      // Format Date: DD-MM-YYYY → YYYY-MM-DD
+      const dateParts = dobRaw.split('-');
+      if (dateParts.length !== 3 || dateParts[2].length !== 4) {
+        return showMessage($('msg3'), 'Date must be DD-MM-YYYY (e.g. 15-05-1995)', 'error');
+      }
+      const [day, month, year] = dateParts;
+      const dateOfBirth = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+
+      // Format Phone: Accept 0... or +234...
+      let phoneNumber = phoneRaw.replace(/\D/g, '');
+      if (phoneNumber.length === 11 && phoneNumber.startsWith('0')) {
+        phoneNumber = '+234' + phoneNumber.slice(1);
+      } else if (phoneNumber.length === 10) {
+        phoneNumber = '+234' + phoneNumber;
+      } else if (!phoneRaw.startsWith('+234') || phoneRaw.length !== 13) {
+        return showMessage($('msg3'), 'Use +2348012345678 or 08012345678', 'error');
+      } else {
+        phoneNumber = phoneRaw;
+      }
+
+      const payload = {
+        firstName: $('firstName').value.trim(),
+        lastName: $('lastName').value.trim(),
+        phoneNumber,
+        country: $('country').value,
+        gender: $('gender').value,
+        dateOfBirth,
+        residentialAddress: $('address').value.trim(),
+      };
+
+      if (Object.values(payload).some(v => !v)) {
+        return showMessage($('msg3'), 'Please fill all fields correctly', 'error');
+      }
+
+      const btn = event.target;
+      btn.innerHTML = '<span class="loader"></span>Submitting Profile...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_URL}/complete-signup-user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tempToken}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          showMessage($('msg3'), 'Profile saved! Now set your PIN', 'success');
+          setStepрь('form-pin', ['step1', 'step2', 'step3']);
+        } else {
+          const err = data.errors
+            ? data.errors.map(e => `${e.property}: ${Object.values(e.constraints)[0]}`).join('<br>')
+            : data.message;
+          showMessage($('msg3'), err || 'Validation failed', 'error');
+        }
+      } catch (err) {
+        showMessage($('msg3'), 'Network error', 'error');
+      }
+      btn.innerHTML = 'Continue →';
+      btn.disabled = false;
+    }
+
+    async function setPin() {
+      const pin = $('pin').value;
+      const confirm = $('confirmPin').value;
+
+      if (pin.length !== 6 || !/^\d+$/.test(pin)) {
+        return showMessage($('msg4'), 'PIN must be 6 digits', 'error');
+      }
+      if (pin !== confirm) {
+        return showMessage($('msg4'), 'PINs do not match', 'error');
+      }
+
+      const btn = event.target;
+      btn.innerHTML = '<span class="loader"></span>Creating Account...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_URL}/set-pin`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tempToken}`
+          },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          showMessage($('msg4'), `
+            <strong>Congratulations!</strong><br><br>
+            Account created successfully!<br>
+            Quidax wallet is being created in the background...<br><br>
+            You can now <strong>login</strong> with your email & PIN.
+          `, 'success');
+          btn.innerHTML = 'Done!';
+          btn.disabled = true;
+          document.querySelectorAll('.progress-step').forEach(s => s.classList.add('done'));
+        } else {
+          showMessage($('msg4'), data.message || 'Failed to set PIN', 'error');
+        }
+      } catch (err) {
+        showMessage($('msg4'), 'Error creating account', 'error');
+      }
+    }
+  </script>
+</body>
+</html>

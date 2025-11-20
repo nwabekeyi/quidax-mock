@@ -4,9 +4,19 @@ const mongoose = require('mongoose');
 const morgan = require('morgan');
 const userRoutes = require('./routes/user');
 const walletRoutes = require('./routes/wallets');
-const paymentRoutes = require('./routes/paymentAddress')
+const paymentAddressWebhook = require('./routes/paymentAddressWebhook')
 const { authMiddleware } = require('./middlewares/auth');
 const { corsMiddleware } = require('./middlewares/cors');
+const paymentAddress = require('./routes/paymentAddress');
+const MarketTickerService = require('./services/marketTicker.service');
+const marketTickers = require('./routes/marketTickers');
+// Call immediately at startup
+MarketTickerService.fetchAndStoreTickers();
+
+// Repeat every 1 minute
+setInterval(() => {
+  MarketTickerService.fetchAndStoreTickers();
+}, 60 * 1000);
 
 const app = express();
 
@@ -16,13 +26,15 @@ app.use(corsMiddleware);
 
 // Log incoming requests
 app.use(morgan('dev'));  // You can also use 'combined' for Apache-style logs
+app.use('/markets', marketTickers);
 
 app.use(authMiddleware);
 
 // Routes
 app.use('/users', userRoutes);
 app.use('/users', walletRoutes);
-app.use('/users', paymentRoutes);
+app.use('/users', paymentAddressWebhook);
+app.use('/users', paymentAddress);
 
 
 // MongoDB connection

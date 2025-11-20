@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const Wallet = require('../models/wallet');
-const PaymentAddressService = require('./paymentAddress');
+const PaymentAddressService = require('./paymentAddressWebhook');
 const { v4: uuidv4 } = require('uuid');
 
 /** Supported currencies — Quidax-like */
