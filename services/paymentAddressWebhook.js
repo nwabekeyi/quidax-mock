@@ -1,164 +1,251 @@
 // services/paymentAddressWebhook.js
 const PaymentAddress = require('../models/paymentAdress');
+const Wallet = require('../models/wallet');
 const User = require('../models/user');
-const { v4: uuidv4 } = require('uuid');
-const { sendWebhookWithRetry } = require('../common/sendWebhookWithRetry');
 const WebhookEvent = require('../models/webhookEvent');
+const { sendWebhookWithRetry } = require('../common/sendWebhookWithRetry');
 
-// In-memory cache
 const webhookCache = new Map();
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Tokens that use destination tag
+const TAGGED_TOKENS = new Set(['xrp', 'xlm']);
+
+// YOUR SOURCE OF TRUTH — WE DECIDE THE NETWORKS
+const CURRENCY_NETWORKS = {
+  btc: ['btc'],
+  eth: ['erc20'],
+  usdt: ['trc20', 'erc20', 'bep20'],     // ← YOU SUPPORT THESE
+  usdc: ['erc20', 'trc20'],
+  bnb: ['bep20'],
+  doge: ['doge'],
+  trx: ['trx'],
+  sol: ['sol'],
+  link: ['erc20'],
+  xrp: [],      // ← uses tag, no network
+  ngn: [],      // ← fiat
+  usd: [],      // ← fiat
+};
+
+// REAL-LOOKING ADDRESS GENERATOR
+const generateAddress = (network, currency) => {
+  const rand = () => Math.random().toString(36).substring(2);
+  const hex = () => Math.random().toString(16).substring(2);
+
+  switch (network) {
+    case 'trc20':
+    case 'trx':
+      return `T${rand().toUpperCase().substring(0, 33)}`;
+    case 'erc20':
+    case 'bep20':
+      return `0x${hex().substring(0, 40)}`;
+    case 'btc':
+      return `bc1q${rand().substring(0, 39)}`;
+    case 'sol':
+      return `${rand()}${rand()}`.substring(0, 44);
+    case 'doge':
+      return `D${rand().toUpperCase().substring(0, 33)}`;
+    default:
+      return address; // fallback
+  }
+};
+
 class PaymentAddressService {
   static async handleWalletAddressGenerated(payload) {
-    const { event, data } = payload;
+    const safeISO = (d) => (d ? new Date(d).toISOString() : new Date().toISOString());
 
-    if (event !== 'wallet.address.generated') {
-      console.log(`[Webhook] Ignored event: ${event}`);
-      return;
-    }
+    const { event, data } = payload;
+    if (event !== 'wallet.address.generated') return;
 
     const {
       id: addressId,
       currency,
-      address,
-      network,
+      address: quidaxAddress,
       user: quidaxUser,
-      destination_tag: rawTag, // ← raw from Quidax
-      created_at,
+      destination_tag: rawTag,
     } = data;
 
     const now = Date.now();
 
     try {
-      // 1. CHECK CACHE
-      const cached = webhookCache.get(addressId);
-      if (cached && cached.expires > now) {
-        console.log(`[Webhook] Resending cached: ${addressId}`);
-        await this._sendWebhook(cached.payload, cached.webhookEvent);
+      // 1. Prevent duplicate processing
+      if (webhookCache.has(addressId)) {
+        console.log(`[Webhook] Already processed: ${addressId}`);
         return;
       }
 
-      // Clean expired
-      for (const [key, entry] of webhookCache.entries()) {
-        if (entry.expires <= now) webhookCache.delete(key);
-      }
-
-      // 2. FIND USER
+      // 2. Find local user
       const localUser = await User.findOne({ quidaxAccountId: quidaxUser.id });
       if (!localUser) {
         console.warn(`[Webhook] User not found: ${quidaxUser.id}`);
         return;
       }
 
-      // 3. UPSERT PAYMENT ADDRESS
-      let paymentAddress = await PaymentAddress.findOne({ quidaxWalletId: addressId });
+      const currencyLower = currency.toLowerCase();
+      const requiresTag = TAGGED_TOKENS.has(currencyLower);
+      const networks = CURRENCY_NETWORKS[currencyLower] || [];
 
-      if (!paymentAddress) {
-        paymentAddress = new PaymentAddress({
-          quidaxWalletId: addressId,
-          name: `${currency.toUpperCase()} Wallet`,
-          currency: currency.toLowerCase(),
-          balance: 0,
-          locked: 0,
-          staked: 0,
-          reference_currency: 'usd',
-          is_crypto: true,
-          blockchain_enabled: true,
-          default_network: network,
-          networks: [
-            {
-              id: network,
-              name: this._getNetworkName(network),
-              deposits_enabled: true,
-              withdraws_enabled: true,
-            },
-          ],
-          user: localUser._id,
-          deposit_address: address,
-          destination_tag: rawTag || null,
-          createdAt: new Date(created_at),
-        });
-        await paymentAddress.save();
-        console.log(`[Webhook] Saved: ${address} (${currency})`);
-      } else {
-        console.log(`[Webhook] Exists: ${address} (${currency})`);
-      }
-
-      // 4. BUILD PAYLOAD WITH VALID destination_tag
-      const destination_tag = rawTag !== null && rawTag !== undefined ? rawTag : '0';
-
-      const webhookPayload = {
-        event: 'wallet.address.generated',
-        data: {
-          id: addressId,
-          currency,
-          address,
-          network,
-          user: { id: quidaxUser.id },
-          destination_tag, // ← ALWAYS a string: tag or "0"
-          created_at: new Date(created_at).toISOString(),
-        },
-      };
-
-      // 5. SAVE WEBHOOK EVENT
-      const webhookEvent = new WebhookEvent({
-        url: process.env.WALLET_WEBHOOK_URL,
-        payload: webhookPayload,
-        resourceType: 'PaymentAddress',
-        resourceId: paymentAddress._id,
-        eventId: addressId,
-        status: 'pending',
-        attempts: 0,
+      // 3. Find wallet
+      const wallet = await Wallet.findOne({
+        user: localUser._id,
+        currency: currencyLower,
       });
-      await webhookEvent.save();
-
-      // 6. CACHE
-      webhookCache.set(addressId, {
-        payload: webhookPayload,
-        webhookEvent,
-        expires: now + CACHE_TTL_MS,
-      });
-
-      // 7. SEND
-      const webhookUrl = process.env.WALLET_WEBHOOK_URL;
-      if (!webhookUrl) {
-        console.error('[Webhook] WALLET_WEBHOOK_URL not set');
+      if (!wallet) {
+        console.error(`[Webhook] Wallet not found: ${currencyLower}`);
         return;
       }
 
-      await this._sendWebhook(webhookPayload, webhookEvent, webhookUrl);
-      console.log(`[Webhook] Sent → ${webhookUrl}`);
+      // 4. Create ONE payment address per network we support
+      for (const network of networks) {
+        const fakeAddress = generateAddress(network, currencyLower);
+
+        const entry = {
+          wallet: wallet._id,
+          user: localUser._id,
+          currency: currencyLower,
+          network,
+          deposit_address: fakeAddress,
+          destination_tag: null,
+          active: true,
+        };
+
+        let paymentAddress = await PaymentAddress.findOne({
+          wallet: wallet._id,
+          currency: currencyLower,
+          network,
+        });
+
+        if (!paymentAddress) {
+          paymentAddress = new PaymentAddress(entry);
+          await paymentAddress.save();
+          console.log(`[Webhook] Created: ${currencyLower} → ${network} → ${fakeAddress}`);
+        }
+
+        // 5. Build webhook payload (one per network)
+
+        const webhookPayload = {
+          event: 'wallet.address.generated',
+          data: {
+            id: `${addressId}-${network}`, // unique per network
+            reference: wallet.reference || null,
+            currency: currencyLower,
+            address: paymentAddress.deposit_address,
+            network: paymentAddress.network,
+            destination_tag: null,
+            total_payments: 0,
+            user: {
+              id: localUser.quidaxAccountId,
+              sn: localUser.quidaxSnId || null,
+              email: localUser.email,
+              reference: localUser.reference || null,
+              first_name: localUser.first_name || '',
+              last_name: localUser.last_name || '',
+              display_name: localUser.display_name || null,
+              created_at: safeISO(localUser.createdAt),
+              updated_at: safeISO(localUser.updatedAt),
+            },
+            created_at: safeISO(paymentAddress.createdAt),
+            updated_at: safeISO(paymentAddress.updatedAt),
+          },
+        };
+
+        // 6. Save event + send
+        const eventKey = `${addressId}-${network}`;
+        await WebhookEvent.updateOne(
+          { eventId: eventKey },
+          {
+            $set: {
+              url: process.env.WALLET_WEBHOOK_URL,
+              payload: webhookPayload,
+              resourceType: 'PaymentAddress',
+              resourceId: paymentAddress._id,
+              status: 'pending',
+              attempts: 0,
+            },
+          },
+          { upsert: true }
+        );
+
+        webhookCache.set(eventKey, {
+          payload: webhookPayload,
+          expires: now + CACHE_TTL_MS,
+        });
+
+        if (process.env.WALLET_WEBHOOK_URL) {
+          this._sendWebhook(webhookPayload);
+        }
+      }
+
+      // Handle tagged tokens (XRP)
+      if (requiresTag) {
+        const entry = {
+          wallet: wallet._id,
+          user: localUser._id,
+          currency: currencyLower,
+          network: null,
+          deposit_address: quidaxAddress,
+          destination_tag: rawTag || Math.floor(Math.random() * 1e9).toString(),
+          active: true,
+        };
+
+        let paymentAddress = await PaymentAddress.findOne({
+          wallet: wallet._id,
+          currency: currencyLower,
+          network: null,
+        });
+
+        if (!paymentAddress) {
+          paymentAddress = new PaymentAddress(entry);
+          await paymentAddress.save();
+        }
+
+        const webhookPayload = {
+          event: 'wallet.address.generated',
+          data: {
+            id: addressId,
+            currency: currencyLower,
+            address: paymentAddress.deposit_address,
+            network: null,
+            destination_tag: paymentAddress.destination_tag,
+            user: { /* same as above */ },
+            created_at: safeISO(paymentAddress.createdAt),
+            updated_at: safeISO(paymentAddress.updatedAt),
+          },
+        };
+
+        // ... same webhook logic
+      }
+
+      // Mark main event as processed
+      webhookCache.set(addressId, { expires: now + CACHE_TTL_MS });
+
     } catch (err) {
       console.error('[Webhook] Handler error:', err);
-      throw err;
     }
   }
 
-  static async _sendWebhook(payload, webhookEvent, url = process.env.WALLET_WEBHOOK_URL) {
-    await sendWebhookWithRetry(
-      url,
+  static async _sendWebhook(payload) {
+    if (!process.env.WALLET_WEBHOOK_URL) return;
+  
+    const eventId = payload.data.id;
+  
+    // get the stored event by eventId
+    const webhookEvent = await WebhookEvent.findOne({ eventId });
+    if (!webhookEvent) {
+      console.error(`[Webhook] No event found for eventId=${eventId}`);
+      return;
+    }
+  
+    // Now use REAL mongoId, not payload.data.id
+    sendWebhookWithRetry(
+      process.env.WALLET_WEBHOOK_URL,
       payload,
       'PaymentAddress',
-      webhookEvent._id.toString(),
-      webhookEvent.eventId
-    ).catch(async (err) => {
-      console.error('[Webhook] Final retry failed:', err);
-      webhookEvent.status = 'failed';
-      webhookEvent.lastError = err.message;
-      webhookEvent.failedAt = new Date();
-      await webhookEvent.save();
-    });
+      webhookEvent._id.toString(),   // ← FIX
+      eventId
+    ).catch(console.error);
   }
-
-  static _getNetworkName(network) {
-    const map = {
-      trc20: 'TRON (TRC20)',
-      erc20: 'Ethereum (ERC20)',
-      bep20: 'Binance Smart Chain (BEP20)',
-    };
-    return map[network?.toLowerCase()] || network?.toUpperCase();
-  }
+  
 }
 
 module.exports = PaymentAddressService;

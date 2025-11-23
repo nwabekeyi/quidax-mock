@@ -2,45 +2,36 @@
 const PaymentAddress = require('../models/paymentAdress');
 
 class PaymentAddressService {
-  /**
-   * Get payment address for a user + currency
-   * Used by: Mock Quidax API + future real Quidax
-   */
   static async getPaymentAddress(userId, currency) {
-    try {
-      const paymentAddress = await PaymentAddress.findOne({
-        currency: currency.toLowerCase(),
-        // Optional: tie to user
-        // user: userId,
-      });
+    const addressDoc = await PaymentAddress.findOne({
+      user: userId,
+      currency: currency.toLowerCase(),
+      active: true,
+    }).sort({ createdAt: -1 });
 
-      if (!paymentAddress || !paymentAddress.deposit_address) {
-        return {
-          success: false,
-          status: 404,
-          message: `No address found for ${currency}`,
-        };
-      }
-
-      return {
-        success: true,
-        status: 200,
-        data: {
-          id: paymentAddress.quidaxWalletId,
-          address: paymentAddress.deposit_address,
-          currency: paymentAddress.currency,
-          network: paymentAddress.default_network,
-          destination_tag: paymentAddress.destination_tag || null,
-        },
-      };
-    } catch (err) {
-      console.error('[PaymentAddressService] Error:', err);
+    if (!addressDoc) {
       return {
         success: false,
-        status: 500,
-        message: 'Internal server error',
+        status: 404,
+        message: `No active deposit address found for ${currency}`,
       };
     }
+
+    return {
+      success: true,
+      status: 200,
+      data: {
+        id: addressDoc._id.toString(),
+        reference: null,
+        address: addressDoc.deposit_address,
+        currency: addressDoc.currency,
+        network: addressDoc.network,
+        destination_tag: addressDoc.destination_tag || null,
+        total_payments: '0',
+        created_at: addressDoc.createdAt.toISOString(),
+        updated_at: addressDoc.updatedAt.toISOString(),
+      },
+    };
   }
 }
 

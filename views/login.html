@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Quidax Wallet Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
+    .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    .loading { opacity: 0.6; pointer-events: none; }
+  </style>
+</head>
+<body class="text-white font-sans">
+
+  <!-- LOGIN PAGE -->
+  <div id="loginPage" class="min-h-screen flex items-center justify-center px-4">
+    <div class="glass p-10 rounded-2xl shadow-2xl w-full max-w-md">
+      <h1 class="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+        Quidax Wallet
+      </h1>
+      <form id="loginForm">
+        <div class="mb-6">
+          <label class="block text-sm font-medium mb-2">Email</label>
+          <input type="email" id="email" required
+            class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:border-blue-500 focus:outline-none transition"
+            placeholder="you@example.com" />
+        </div>
+        <div class="mb-8">
+          <label class="block text-sm font-medium mb-2">PIN (6 digits)</label>
+          <input type="password" id="pin" required maxlength="6"
+            class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:border-blue-500 focus:outline-none transition"
+            placeholder="••••••" />
+        </div>
+        <button type="submit" id="loginBtn"
+          class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 rounded-lg transition transform hover:scale-105">
+          Login
+        </button>
+      </form>
+      <p class="text-center mt-6 text-sm text-gray-400">
+        Test: chidi90simeon@gmail.com + any 6-digit PIN
+      </p>
+    </div>
+  </div>
+
+  <!-- DASHBOARD (Hidden initially) -->
+  <div id="dashboard" class="hidden min-h-screen p-6">
+    <div class="max-w-6xl mx-auto">
+      <!-- Header -->
+      <div class="flex justify-between items-center mb-10">
+        <div>
+          <h1 class="text-4xl font-bold">Welcome back, <span id="userName">User</span>!</h1>
+          <p class="text-gray-400 mt-2">Here's your portfolio overview</p>
+        </div>
+        <button onclick="logout()" class="px-6 py-3 bg-red-600/20 hover:bg-red-600/30 rounded-lg transition">
+          Logout
+        </button>
+      </div>
+
+      <!-- Total Balance Card -->
+      <div class="glass p-8 rounded-2xl mb-8 text-center">
+        <p class="text-gray-400 text-lg">Total Portfolio Balance</p>
+        <h2 id="totalBalance" class="text-6xl font-bold mt-4 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+          $0.00
+        </h2>
+      </div>
+
+      <!-- Wallets Grid -->
+      <h2 class="text-2xl font-bold mb-6">Your Wallets</h2>
+      <div id="walletsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Wallets loaded here -->
+      </div>
+
+      <div class="mt-12 text-center text-gray-500 text-sm">
+        Data fetched from: <code class="bg-white/10 px-3 py-1 rounded">/api/v1/wallet/*</code>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:5000/api/v1';
+
+    // Helper: Get token from sessionStorage
+    function getToken() {
+      return sessionStorage.getItem('accessToken');
+    }
+
+    // Helper: Make authenticated request
+    async function authFetch(url, options = {}) {
+      const token = getToken();
+      if (!token) throw new Error('No token');
+
+      return fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...options.headers
+        }
+      });
+    }
+
+    // Login
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const pin = document.getElementById('pin').value;
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      btn.innerHTML = 'Logging in...';
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, pin })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.message || 'Login failed');
+
+        // Save token
+        sessionStorage.setItem('accessToken', data.data.accessToken);
+        sessionStorage.setItem('userName', data.data.user.firstName);
+
+        // Go to dashboard
+        document.getElementById('loginPage').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        document.getElementById('userName').textContent = data.data.user.firstName;
+
+        // Load wallet data
+        loadDashboard();
+
+      } catch (err) {
+        alert('Login Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Login';
+      }
+    });
+
+    // Load all wallet data
+    async function loadDashboard() {
+      try {
+        // 1. Total Balance
+        const totalRes = await authFetch(`${API_BASE}/wallet/total-balance`);
+        const totalData = await totalRes.json();
+        document.getElementById('totalBalance').textContent = 
+          '$' + Number(totalData.totalBalanceUsd || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        // 2. All Wallets
+        const walletsRes = await authFetch(`${API_BASE}/wallet/all-wallets`);
+        const walletsData = await walletsRes.json();
+
+        const grid = document.getElementById('walletsGrid');
+        grid.innerHTML = '';
+
+        walletsData.wallets.forEach(w => {
+          const card = document.createElement('div');
+          card.className = 'glass p-6 rounded-xl hover:scale-105 transition transform';
+          card.innerHTML = `
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <h3 class="text-2xl font-bold">${w.currency}</h3>
+                <p class="text-gray-400 text-sm">${w.name || 'Main Wallet'}</p>
+              </div>
+              <span class="text-3xl">₿</span>
+            </div>
+            <div class="space-y-2">
+              <p class="text-lg">Balance: <span class="font-mono">${w.balance}</span></p>
+              <p class="text-sm text-gray-400">≈ $${w.usdBalance.toLocaleString()}</p>
+              <p class="text-xs text-gray-500">1 ${w.currency} = $${w.usdValuePerCoin}</p>
+            </div>
+            ${w.depositAddress ? `<p class="text-xs mt-4 text-green-400">Deposits Enabled</p>` : ''}
+          `;
+          grid.appendChild(card);
+        });
+
+      } catch (err) {
+        console.error(err);
+        if (err.message.includes('token')) {
+          alert('Session expired. Please login again.');
+          logout();
+        } else {
+          alert('Failed to load wallet data: ' + err.message);
+        }
+      }
+    }
+
+    // Logout
+    function logout() {
+      sessionStorage.clear();
+      document.getElementById('dashboard').classList.add('hidden');
+      document.getElementById('loginPage').classList.remove('hidden');
+      document.getElementById('email').value = '';
+      document.getElementById('pin').value = '';
+    }
+
+    // Auto-login if token exists
+    if (getToken()) {
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      const name = sessionStorage.getItem('userName') || 'User';
+      document.getElementById('userName').textContent = name;
+      loadDashboard();
+    }
+  </script>
+</body>
+</html>

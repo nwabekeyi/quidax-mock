@@ -1,31 +1,18 @@
 const mongoose = require('mongoose');
 
 const PaymentAddressSchema = new mongoose.Schema({
-  quidaxWalletId: { type: String },
-  name: { type: String },
+  wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true }, // link to wallet
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },   // optional duplicate reference
   currency: { type: String, required: true },
-  balance: { type: Number, default: 0 },
-  locked: { type: Number, default: 0 },
-  staked: { type: Number, default: 0 },
-  reference_currency: { type: String, default: 'usd' },
-  is_crypto: { type: Boolean, default: true },
-  blockchain_enabled: { type: Boolean, default: true },
-  default_network: { type: String, default: 'trc20' },
-  networks: {
-    type: Array,
-    default: [
-      {
-        id: 'trc20',
-        name: 'TRON (TRC20)',
-        deposits_enabled: true,
-        withdraws_enabled: true,
-      },
-    ],
-  },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deposit_address: { type: String, default: null },
-  destination_tag: { type: String, default: null },
+  network: { type: String, required: false, default: null },          // 'erc20', 'trc20', 'bep20', etc.
+  deposit_address: { type: String, required: true }, // blockchain deposit address
+  destination_tag: { type: String, default: null },  // only for XRP, XLM, BNB
+  active: { type: Boolean, default: true },          // for disabling old addresses
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  depositCount: { type: Number, default: 0 },
+
 });
+
 
 module.exports = mongoose.model('paymentAddress', PaymentAddressSchema);
