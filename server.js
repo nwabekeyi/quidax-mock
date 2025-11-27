@@ -10,6 +10,8 @@ const { corsMiddleware } = require('./middlewares/cors');
 const paymentAddress = require('./routes/paymentAddress');
 const MarketTickerService = require('./services/marketTicker.service');
 const marketTickers = require('./routes/marketTickers');
+const depositWebhook = require('./routes/depositWebhook')
+
 // Call immediately at startup
 MarketTickerService.fetchAndStoreTickers();
 
@@ -35,6 +37,8 @@ app.use('/users', userRoutes);
 app.use('/users', walletRoutes);
 app.use('/users', paymentAddressWebhook);
 app.use('/users', paymentAddress);
+app.use('/users', depositWebhook);
+
 
 
 // MongoDB connection
